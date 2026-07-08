@@ -79,12 +79,15 @@
         <div class="section-title row-between">
           <div>
             <h2>ภาพบิล</h2>
-            <p>ถ่ายภาพใหม่หรือเลือกรูปที่มีอยู่ เพิ่มได้หลายภาพในรอบเดียว</p>
+            <p>เปิดกล้องในเว็บ ถ่ายด้วยกล้องเครื่อง หรือเลือกรูปภาพที่มีอยู่</p>
           </div>
         </div>
 
         <div class="camera-guide">
           <div class="guide-frame">
+            <video id="cameraVideo" class="camera-video hidden" autoplay playsinline muted></video>
+            <canvas id="cameraCanvas" class="hidden"></canvas>
+
             <div class="grid-line v1"></div>
             <div class="grid-line v2"></div>
             <div class="grid-line h1"></div>
@@ -93,12 +96,15 @@
             <div class="corner tr"></div>
             <div class="corner bl"></div>
             <div class="corner br"></div>
-            <div class="guide-text">วางบิลให้อยู่ในกรอบ อ่านได้ทั้งแนวตั้งและแนวนอน</div>
+            <div id="guideText" class="guide-text">วางบิลให้อยู่ในกรอบ อ่านได้ทั้งแนวตั้งและแนวนอน</div>
           </div>
         </div>
 
         <div class="capture-actions">
-          <button id="takePhotoBtn" class="btn btn-primary" type="button">ถ่ายภาพบิล</button>
+          <button id="openWebCameraBtn" class="btn btn-primary" type="button">เปิดกล้องในเว็บ</button>
+          <button id="snapPhotoBtn" class="btn btn-save hidden" type="button">ถ่ายภาพจากกล้อง</button>
+          <button id="closeCameraBtn" class="btn btn-light hidden" type="button">ปิดกล้อง</button>
+          <button id="takePhotoBtn" class="btn btn-dark" type="button">เปิดกล้องของเครื่อง</button>
           <button id="pickImageBtn" class="btn btn-light" type="button">เลือกรูปภาพ</button>
         </div>
 
