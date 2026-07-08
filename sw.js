@@ -1,15 +1,16 @@
 /************************************************************
  * sw.js
- * Receipt OCR System Service Worker
+ * Receipt OCR CJ - Service Worker
  ************************************************************/
 
-const CACHE_NAME = 'receipt-ocr-v1';
+const CACHE_NAME = 'receipt-ocr-cj-v1';
 
 const APP_FILES = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './config.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -39,12 +40,19 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const req = event.request;
+  const url = new URL(req.url);
 
   if (req.method !== 'GET') return;
 
+  if (url.pathname.includes('/api/')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(req).then(cached => {
-      return cached || fetch(req).then(res => {
+      if (cached) return cached;
+
+      return fetch(req).then(res => {
         const copy = res.clone();
 
         caches.open(CACHE_NAME).then(cache => {
@@ -52,6 +60,10 @@ self.addEventListener('fetch', event => {
         });
 
         return res;
+      }).catch(() => {
+        if (req.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
       });
     })
   );
