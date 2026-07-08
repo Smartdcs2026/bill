@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Receipt OCR Admin</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <header class="app-header">
+      <div class="app-logo">
+        <span>ADM</span>
+      </div>
+      <div>
+        <h1>Admin</h1>
+        <p>จัดการแบรนด์และ Template การอ่านใบเสร็จ</p>
+      </div>
+    </header>
+
+    <main class="main-card">
+
+      <section class="form-section">
+        <div class="section-head">
+          <h2>เพิ่ม / แก้ไขแบรนด์</h2>
+          <p>เช่น CJ, MB, JF, TD, LE</p>
+        </div>
+
+        <div class="result-grid">
+          <div>
+            <label class="field-label">รหัสแบรนด์</label>
+            <input id="brandCode" class="input" type="text" placeholder="CJ" />
+          </div>
+
+          <div>
+            <label class="field-label">ชื่อแบรนด์</label>
+            <input id="brandName" class="input" type="text" placeholder="CJ" />
+          </div>
+        </div>
+
+        <button id="saveBrandBtn" class="btn btn-save" type="button">
+          บันทึกแบรนด์
+        </button>
+      </section>
+
+      <section class="form-section">
+        <div class="section-head">
+          <h2>ลบแบรนด์</h2>
+          <p>ระบบจะปิดใช้งาน ไม่ลบข้อมูลเก่า</p>
+        </div>
+
+        <select id="deleteBrandSelect" class="input"></select>
+
+        <button id="deleteBrandBtn" class="btn btn-light" type="button">
+          ปิดใช้งานแบรนด์
+        </button>
+      </section>
+
+      <section class="form-section">
+        <div class="section-head">
+          <h2>เพิ่ม Template การอ่าน</h2>
+          <p>หนึ่งแบรนด์มีหลาย Template ได้</p>
+        </div>
+
+        <label class="field-label">แบรนด์</label>
+        <select id="templateBrandSelect" class="input"></select>
+
+        <label class="field-label">ชื่อ Template</label>
+        <input id="templateName" class="input" type="text" value="DEFAULT-2" />
+
+        <label class="field-label">Priority</label>
+        <input id="priority" class="input" type="number" value="2" />
+
+        <label class="field-label">Rules JSON</label>
+        <textarea id="rulesJson" class="textarea raw-text"></textarea>
+
+        <button id="loadExampleBtn" class="btn btn-dark" type="button">
+          ใส่ตัวอย่าง Rules
+        </button>
+
+        <button id="saveTemplateBtn" class="btn btn-save" type="button">
+          บันทึก Template
+        </button>
+      </section>
+
+      <section class="form-section">
+        <a class="btn btn-primary" href="index.html" style="display:block;text-align:center;text-decoration:none;">
+          กลับหน้าบันทึกใบเสร็จ
+        </a>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    const API_BASE = 'https://bill.somchaibutphon.workers.dev';
+
+    let brands = [];
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      bindAdminEvents();
+      await loadOptions();
+      loadExampleRules();
+    });
+
+    function bindAdminEvents() {
+      document.getElementById('saveBrandBtn').addEventListener('click', saveBrand);
+      document.getElementById('deleteBrandBtn').addEventListener('click', deleteBrand);
+      document.getElementById('saveTemplateBtn').addEventListener('click', saveTemplate);
+      document.getElementById('loadExampleBtn').addEventListener('click', loadExampleRules);
+    }
+
+    async function loadOptions() {
+      try {
+        const res = await fetch(`${API_BASE}/api/options`);
+        const data = await res.json();
+
+        if (!data.ok) throw new Error(data.message || 'โหลดข้อมูลไม่สำเร็จ');
+
+        brands = data.brands || [];
+        renderBrandSelects();
+
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'โหลดข้อมูลไม่ได้',
+          text: err.message
+        });
+      }
+    }
+
+    function renderBrandSelects() {
+      const deleteSelect = document.getElementById('deleteBrandSelect');
+      const templateSelect = document.getElementById('templateBrandSelect');
+
+      deleteSelect.innerHTML = '';
+      templateSelect.innerHTML = '';
+
+      brands.forEach(brand => {
+        const opt1 = document.createElement('option');
+        opt1.value = brand.brandCode;
+        opt1.textContent = `${brand.brandCode} - ${brand.brandName}`;
+        deleteSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = brand.brandCode;
+        opt2.textContent = `${brand.brandCode} - ${brand.brandName}`;
+        templateSelect.appendChild(opt2);
+      });
+    }
+
+    async function saveBrand() {
+      const brandCode = document.getElementById('brandCode').value.trim().toUpperCase();
+      const brandName = document.getElementById('brandName').value.trim();
+
+      if (!brandCode) {
+        return Swal.fire({
+          icon: 'warning',
+          title: 'กรุณากรอกรหัสแบรนด์'
+        });
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/brand/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandCode, brandName })
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+
+        Swal.fire({
+          icon: 'success',
+          title: 'บันทึกแบรนด์สำเร็จ'
+        });
+
+        document.getElementById('brandCode').value = '';
+        document.getElementById('brandName').value = '';
+
+        await loadOptions();
+
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'บันทึกไม่สำเร็จ',
+          text: err.message
+        });
+      }
+    }
+
+    async function deleteBrand() {
+      const brandCode = document.getElementById('deleteBrandSelect').value;
+
+      if (!brandCode) return;
+
+      const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'ยืนยันปิดใช้งานแบรนด์?',
+        text: brandCode,
+        showCancelButton: true,
+        confirmButtonText: 'ยืนยัน',
+        cancelButtonText: 'ยกเลิก'
+      });
+
+      if (!confirm.isConfirmed) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/brand/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandCode })
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || 'ลบไม่สำเร็จ');
+
+        Swal.fire({
+          icon: 'success',
+          title: 'ปิดใช้งานแล้ว'
+        });
+
+        await loadOptions();
+
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'ทำรายการไม่สำเร็จ',
+          text: err.message
+        });
+      }
+    }
+
+    async function saveTemplate() {
+      const brandCode = document.getElementById('templateBrandSelect').value;
+      const templateName = document.getElementById('templateName').value.trim();
+      const priority = Number(document.getElementById('priority').value || 1);
+      const rulesText = document.getElementById('rulesJson').value.trim();
+
+      if (!brandCode) {
+        return Swal.fire({
+          icon: 'warning',
+          title: 'กรุณาเลือกแบรนด์'
+        });
+      }
+
+      let rules;
+
+      try {
+        rules = JSON.parse(rulesText);
+      } catch (err) {
+        return Swal.fire({
+          icon: 'error',
+          title: 'Rules JSON ไม่ถูกต้อง',
+          text: err.message
+        });
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/template/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brandCode,
+            templateName,
+            priority,
+            rules
+          })
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || 'บันทึก Template ไม่สำเร็จ');
+
+        Swal.fire({
+          icon: 'success',
+          title: 'บันทึก Template สำเร็จ'
+        });
+
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'บันทึกไม่สำเร็จ',
+          text: err.message
+        });
+      }
+    }
+
+    function loadExampleRules() {
+      const example = {
+        receiptNo: [
+          {
+            type: "regex",
+            pattern: "(BNO|NO|Receipt|Ref|Bill|Doc)[\\s:#-]*([A-Z0-9\\-\\/]+)",
+            group: 2
+          },
+          {
+            type: "afterKeywordLine",
+            keywords: ["BNO", "Receipt"],
+            offset: 1
+          }
+        ],
+        receiptDate: [
+          {
+            type: "regex",
+            pattern: "(\\d{2}[\\/\\-]\\d{2}[\\/\\-]\\d{4})",
+            group: 1
+          }
+        ],
+        receiptTime: [
+          {
+            type: "regex",
+            pattern: "(\\d{2}[:.]\\d{2}(?::\\d{2})?)",
+            group: 1
+          }
+        ],
+        posNo: [
+          {
+            type: "regex",
+            pattern: "(POS|Terminal|Till)[\\s:#-]*([A-Z0-9\\-\\/]+)",
+            group: 2
+          },
+          {
+            type: "lineNumber",
+            lineIndex: 3
+          }
+        ],
+        cashier: [
+          {
+            type: "regex",
+            pattern: "(Cashier|Staff|Emp)[\\s:#-]*([A-Z0-9\\-\\/]+)",
+            group: 2
+          }
+        ],
+        subtotal: [
+          {
+            type: "keywordNumber",
+            keywords: ["SUBTOTAL", "SUB TOTAL"]
+          }
+        ],
+        vat: [
+          {
+            type: "keywordNumber",
+            keywords: ["VAT", "TAX"]
+          }
+        ],
+        total: [
+          {
+            type: "keywordNumber",
+            keywords: ["TOTAL", "NET", "AMOUNT", "BALANCE"]
+          },
+          {
+            type: "afterKeywordLine",
+            keywords: ["TOTAL"],
+            offset: 1
+          }
+        ],
+        paymentType: [
+          {
+            type: "keywordLine",
+            keywords: ["CASH", "CARD", "PROMPTPAY", "QR"]
+          }
+        ]
+      };
+
+      document.getElementById('rulesJson').value = JSON.stringify(example, null, 2);
+    }
+  </script>
+</body>
+</html>
