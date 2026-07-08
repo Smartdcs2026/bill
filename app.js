@@ -1,7 +1,6 @@
 /************************************************************
  * app.js
- * Receipt OCR System Frontend - CJ Round 5
- * รองรับ config.js + PWA
+ * Receipt OCR System Frontend - Multi-brand base / CJ first rule
  ************************************************************/
 
 const CONFIG = window.RECEIPT_OCR_CONFIG || {};
@@ -13,6 +12,8 @@ const OCR_LANG = CONFIG.OCR?.LANG || 'eng';
 let currentUser = null;
 let imageItems = [];
 let lastValidation = null;
+let availableBrands = [];
+let availableRules = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
@@ -32,13 +33,18 @@ function bindEvents() {
   byId('adminLogoutBtn').addEventListener('click', logout);
   byId('goUserPageBtn').addEventListener('click', () => showPage('appPage'));
 
-  byId('addImageBtn').addEventListener('click', () => byId('imageInput').click());
-  byId('imageInput').addEventListener('change', addImage);
+  byId('takePhotoBtn').addEventListener('click', () => byId('cameraInput').click());
+  byId('pickImageBtn').addEventListener('click', () => byId('galleryInput').click());
+  byId('cameraInput').addEventListener('change', addImage);
+  byId('galleryInput').addEventListener('change', addImage);
+
   byId('ocrBtn').addEventListener('click', runOCRAndValidate);
   byId('clearBtn').addEventListener('click', clearBatch);
   byId('saveBtn').addEventListener('click', confirmAndSave);
   byId('loadHistoryBtn').addEventListener('click', loadHistory);
   byId('saveRuleBtn').addEventListener('click', saveCJRule);
+
+  byId('brandSelect').addEventListener('change', clearBatch);
 }
 
 async function login() {
@@ -66,6 +72,8 @@ async function login() {
       pass: data.pass
     };
 
+    await loadOptions();
+
     Swal.close();
 
     if (currentUser.isAdmin) {
@@ -79,6 +87,55 @@ async function login() {
   } catch (err) {
     Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: err.message });
   }
+}
+
+async function loadOptions() {
+  try {
+    const res = await fetch(API_BASE + '/api/options');
+    const data = await res.json();
+
+    if (!data.ok) throw new Error(data.message || 'โหลดแบรนด์ไม่สำเร็จ');
+
+    availableBrands = data.brands || [];
+    availableRules = data.rules || [];
+
+    renderBrandOptions();
+
+  } catch (err) {
+    availableBrands = [{ brandCode: 'CJ', brandName: 'CJ' }];
+    availableRules = [];
+    renderBrandOptions();
+
+    Swal.fire({
+      icon: 'warning',
+      title: 'โหลดแบรนด์จากชีทไม่ได้',
+      text: 'ระบบใช้ CJ เป็นค่าเริ่มต้นชั่วคราว'
+    });
+  }
+}
+
+function renderBrandOptions() {
+  const select = byId('brandSelect');
+
+  if (!availableBrands.length) {
+    select.innerHTML = '<option value="CJ">CJ</option>';
+    return;
+  }
+
+  select.innerHTML = availableBrands.map(brand => {
+    const code = String(brand.brandCode || '').toUpperCase();
+    const name = brand.brandName || code;
+    const selected = code === 'CJ' ? 'selected' : '';
+    return `<option value="${escapeHtml(code)}" ${selected}>${escapeHtml(code)} - ${escapeHtml(name)}</option>`;
+  }).join('');
+}
+
+function getSelectedBrandRule() {
+  const brandCode = byId('brandSelect').value;
+
+  return availableRules.find(rule =>
+    String(rule.brandCode || '').toUpperCase() === String(brandCode || '').toUpperCase()
+  );
 }
 
 function logout() {
@@ -121,7 +178,7 @@ async function addImage(e) {
 
     imageItems.push(item);
     renderImageList();
-    byId('imageInput').value = '';
+    e.target.value = '';
 
     Swal.close();
 
@@ -164,11 +221,37 @@ function removeImage(index) {
 async function runOCRAndValidate() {
   if (!currentUser) return Swal.fire({ icon: 'warning', title: 'กรุณาเข้าสู่ระบบ' });
 
+  const brandCode = byId('brandSelect').value;
   const targetMonth = byId('targetMonth').value;
   const collectionRound = byId('collectionRound').value;
 
+  if (!brandCode) return Swal.fire({ icon: 'warning', title: 'กรุณาเลือกแบรนด์' });
   if (!targetMonth) return Swal.fire({ icon: 'warning', title: 'กรุณาเลือกเดือนข้อมูล' });
   if (!imageItems.length) return Swal.fire({ icon: 'warning', title: 'กรุณาเพิ่มภาพบิล' });
+
+  const rule = getSelectedBrandRule();
+
+  if (!rule) {
+    return Swal.fire({
+      icon: 'warning',
+      title: 'ยังไม่มี Rule ของแบรนด์นี้',
+      html: `
+        <div style="text-align:left">
+          <div>แบรนด์: <b>${escapeHtml(brandCode)}</b></div>
+          <div style="margin-top:8px">ตอนนี้ระบบเริ่มทำเงื่อนไขของ CJ ก่อน</div>
+          <div>Admin สามารถเพิ่ม Rule ของแบรนด์นี้ในอนาคตได้</div>
+        </div>
+      `
+    });
+  }
+
+  if (brandCode !== 'CJ') {
+    return Swal.fire({
+      icon: 'info',
+      title: 'แบรนด์นี้รอเพิ่มเงื่อนไข',
+      text: 'โครงสร้างรองรับแล้ว แต่รอบนี้เปิดใช้งานเงื่อนไข CJ ก่อน'
+    });
+  }
 
   Swal.fire({
     title: 'กำลังอ่าน OCR',
@@ -195,10 +278,11 @@ async function runOCRAndValidate() {
       }
     }
 
-    Swal.update({ html: 'กำลังตรวจเงื่อนไข CJ...' });
+    Swal.update({ html: `กำลังตรวจเงื่อนไข ${brandCode}...` });
 
     const validation = await postJson('/api/cj/validate', {
       actor: currentUser,
+      brandCode,
       targetMonth,
       collectionRound,
       images: imageItems
@@ -266,6 +350,7 @@ async function showValidationSwal(data) {
     title: 'ตรวจสอบก่อนบันทึก',
     html: `
       <div style="text-align:left">
+        <div><b>แบรนด์:</b> ${escapeHtml(data.brandCode || '-')}</div>
         <div><b>เดือน:</b> ${escapeHtml(data.targetMonth || '-')}</div>
         <div><b>ครั้งที่:</b> ${escapeHtml(String(data.collectionRound || '-'))}</div>
         <div><b>ผู้บันทึก:</b> ${escapeHtml(currentUser.name)}</div>
@@ -337,6 +422,7 @@ async function confirmAndSave() {
 }
 
 async function loadHistory() {
+  const brandCode = byId('brandSelect').value || 'CJ';
   const targetMonth = byId('targetMonth').value;
 
   Swal.fire({
@@ -347,7 +433,7 @@ async function loadHistory() {
 
   try {
     const data = await postJson('/api/history', {
-      brandCode: 'CJ',
+      brandCode,
       targetMonth
     });
 
@@ -370,10 +456,10 @@ function renderHistoryRow(row) {
       <div class="row-main">
         <div><b>เวลา:</b> ${escapeHtml(row.timestamp || '-')}</div>
         <div><b>ผู้บันทึก:</b> ${escapeHtml(row.recorderName || '-')}</div>
+        <div><b>แบรนด์:</b> ${escapeHtml(row.brandCode || '-')}</div>
         <div><b>ร้าน:</b> ${escapeHtml(row.storeCode || '-')}</div>
         <div><b>POS:</b> ${escapeHtml(row.posNo || '-')}</div>
         <div><b>ลูกค้า:</b> ${escapeHtml(row.customerNo || '-')}</div>
-        <div><b>ครั้งที่:</b> ${escapeHtml(row.collectionRound || '-')}</div>
       </div>
       ${row.imageUrl ? `<div style="margin-top:10px"><a class="small-btn primary" href="${row.imageUrl}" target="_blank" rel="noopener">ดูภาพบิล</a></div>` : ''}
     </div>
@@ -407,6 +493,7 @@ async function saveCJRule() {
     if (!data.ok) throw new Error(data.message || 'บันทึก Rule ไม่สำเร็จ');
 
     Swal.fire({ icon: 'success', title: 'บันทึก Rule สำเร็จ' });
+    await loadOptions();
 
   } catch (err) {
     Swal.fire({ icon: 'error', title: 'บันทึก Rule ไม่สำเร็จ', text: err.message });
