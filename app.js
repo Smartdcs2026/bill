@@ -1,12 +1,14 @@
 /************************************************************
  * app.js
- * Receipt OCR System Frontend - CJ Round 3
+ * Receipt OCR System Frontend - CJ Round 5
+ * รองรับ config.js + PWA
  ************************************************************/
 
-const API_BASE = 'https://bill.somchaibutphon.workers.dev';
-
-const MAX_IMAGE_WIDTH = 1400;
-const JPEG_QUALITY = 0.86;
+const CONFIG = window.RECEIPT_OCR_CONFIG || {};
+const API_BASE = CONFIG.API_BASE || 'https://bill.somchaibutphon.workers.dev';
+const MAX_IMAGE_WIDTH = CONFIG.OCR?.MAX_IMAGE_WIDTH || 1400;
+const JPEG_QUALITY = CONFIG.OCR?.JPEG_QUALITY || 0.86;
+const OCR_LANG = CONFIG.OCR?.LANG || 'eng';
 
 let currentUser = null;
 let imageItems = [];
@@ -15,6 +17,7 @@ let lastValidation = null;
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   setDefaultMonth();
+  renderImageList();
   setInterval(updateClientTime, 1000);
   updateClientTime();
 });
@@ -88,6 +91,10 @@ function logout() {
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   byId(id).classList.add('active');
+
+  if (id === 'appPage' && currentUser) {
+    byId('userBadge').textContent = `ผู้ใช้งาน: ${currentUser.name}`;
+  }
 }
 
 async function addImage(e) {
@@ -95,6 +102,12 @@ async function addImage(e) {
   if (!file) return;
 
   try {
+    Swal.fire({
+      title: 'กำลังเตรียมภาพ',
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+
     const base64 = await preprocessImage(file);
     const item = {
       index: imageItems.length + 1,
@@ -109,6 +122,8 @@ async function addImage(e) {
     imageItems.push(item);
     renderImageList();
     byId('imageInput').value = '';
+
+    Swal.close();
 
   } catch (err) {
     Swal.fire({ icon: 'error', title: 'เพิ่มภาพไม่สำเร็จ', text: err.message });
@@ -167,7 +182,7 @@ async function runOCRAndValidate() {
       Swal.update({ html: `กำลังอ่านข้อความภาพที่ ${i + 1} / ${imageItems.length}` });
 
       if (!imageItems[i].rawText) {
-        const result = await Tesseract.recognize(imageItems[i].base64, 'eng', {
+        const result = await Tesseract.recognize(imageItems[i].base64, OCR_LANG, {
           logger: m => {
             if (m.status === 'recognizing text') {
               const percent = Math.round((m.progress || 0) * 100);
@@ -452,7 +467,6 @@ function preprocessImage(file) {
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        // ปรับภาพให้ OCR อ่านตัวเลข/อังกฤษดีขึ้นแบบไม่ทำลายภาพมากเกินไป
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
 
@@ -489,10 +503,12 @@ function normalizeText(text) {
 }
 
 async function postJson(path, payload) {
+  const isGet = path === '/api/options';
+
   const res = await fetch(API_BASE + path, {
-    method: path === '/api/options' ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: path === '/api/options' ? undefined : JSON.stringify(payload || {})
+    method: isGet ? 'GET' : 'POST',
+    headers: isGet ? undefined : { 'Content-Type': 'application/json' },
+    body: isGet ? undefined : JSON.stringify(payload || {})
   });
 
   return await res.json();
