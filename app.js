@@ -1,6 +1,7 @@
 /************************************************************
  * app.js
- * Receipt OCR System Frontend - Multi-brand base / CJ first rule
+ * Receipt OCR System Frontend - Round 9
+ * Multi-brand base / CJ first rule / Web camera support
  ************************************************************/
 
 const CONFIG = window.RECEIPT_OCR_CONFIG || {};
@@ -14,6 +15,7 @@ let imageItems = [];
 let lastValidation = null;
 let availableBrands = [];
 let availableRules = [];
+let cameraStream = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
@@ -32,6 +34,10 @@ function bindEvents() {
   byId('logoutBtn').addEventListener('click', logout);
   byId('adminLogoutBtn').addEventListener('click', logout);
   byId('goUserPageBtn').addEventListener('click', () => showPage('appPage'));
+
+  byId('openWebCameraBtn').addEventListener('click', openWebCamera);
+  byId('snapPhotoBtn').addEventListener('click', snapWebCameraPhoto);
+  byId('closeCameraBtn').addEventListener('click', closeWebCamera);
 
   byId('takePhotoBtn').addEventListener('click', () => byId('cameraInput').click());
   byId('pickImageBtn').addEventListener('click', () => byId('galleryInput').click());
@@ -98,7 +104,6 @@ async function loadOptions() {
 
     availableBrands = data.brands || [];
     availableRules = data.rules || [];
-
     renderBrandOptions();
 
   } catch (err) {
@@ -138,8 +143,107 @@ function getSelectedBrandRule() {
   );
 }
 
+async function openWebCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return Swal.fire({
+      icon: 'warning',
+      title: 'อุปกรณ์นี้ไม่รองรับกล้องในเว็บ',
+      text: 'ให้ใช้ปุ่ม “เปิดกล้องของเครื่อง” แทน'
+    });
+  }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+
+    const video = byId('cameraVideo');
+    video.srcObject = cameraStream;
+    video.classList.remove('hidden');
+
+    byId('snapPhotoBtn').classList.remove('hidden');
+    byId('closeCameraBtn').classList.remove('hidden');
+    byId('openWebCameraBtn').classList.add('hidden');
+    byId('guideText').textContent = 'จัดบิลให้อยู่ในกรอบ แล้วกดถ่ายภาพจากกล้อง';
+
+  } catch (err) {
+    Swal.fire({
+      icon: 'error',
+      title: 'เปิดกล้องในเว็บไม่ได้',
+      html: `
+        <div style="text-align:left">
+          <div>${escapeHtml(err.message || String(err))}</div>
+          <div style="margin-top:8px">ให้ตรวจสอบว่าเว็บเป็น HTTPS และอนุญาตสิทธิ์กล้องแล้ว</div>
+          <div>หรือใช้ปุ่ม “เปิดกล้องของเครื่อง” แทน</div>
+        </div>
+      `
+    });
+  }
+}
+
+async function snapWebCameraPhoto() {
+  const video = byId('cameraVideo');
+
+  if (!cameraStream || !video.videoWidth) {
+    return Swal.fire({ icon: 'warning', title: 'ยังไม่พบภาพจากกล้อง' });
+  }
+
+  const canvas = byId('cameraCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const rawBase64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  const base64 = await preprocessBase64Image(rawBase64);
+
+  const item = {
+    index: imageItems.length + 1,
+    sourceImageIndex: imageItems.length + 1,
+    imageTempId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    imageName: `camera_${formatFileDateTime(new Date())}.jpg`,
+    mimeType: 'image/jpeg',
+    base64,
+    rawText: ''
+  };
+
+  imageItems.push(item);
+  renderImageList();
+
+  Swal.fire({
+    icon: 'success',
+    title: 'เพิ่มภาพจากกล้องแล้ว',
+    timer: 900,
+    showConfirmButton: false
+  });
+}
+
+function closeWebCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+  }
+
+  cameraStream = null;
+
+  const video = byId('cameraVideo');
+  video.srcObject = null;
+  video.classList.add('hidden');
+
+  byId('snapPhotoBtn').classList.add('hidden');
+  byId('closeCameraBtn').classList.add('hidden');
+  byId('openWebCameraBtn').classList.remove('hidden');
+  byId('guideText').textContent = 'วางบิลให้อยู่ในกรอบ อ่านได้ทั้งแนวตั้งและแนวนอน';
+}
+
 function logout() {
   currentUser = null;
+  closeWebCamera();
   clearBatch();
   byId('loginPass').value = '';
   showPage('loginPage');
@@ -529,53 +633,73 @@ function formatDateTimeTH(date) {
   return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
 }
 
+function formatFileDateTime(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
+}
+
 function preprocessImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () => {
-      const img = new Image();
-
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > MAX_IMAGE_WIDTH) {
-          height = Math.round(height * (MAX_IMAGE_WIDTH / width));
-          width = MAX_IMAGE_WIDTH;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          const contrast = Math.min(255, Math.max(0, (gray - 128) * 1.18 + 128));
-          data[i] = contrast;
-          data[i + 1] = contrast;
-          data[i + 2] = contrast;
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-
-        resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
-      };
-
-      img.onerror = () => reject(new Error('ไฟล์ภาพไม่ถูกต้อง'));
-      img.src = reader.result;
+    reader.onload = async () => {
+      try {
+        const base64 = await preprocessBase64Image(reader.result);
+        resolve(base64);
+      } catch (err) {
+        reject(err);
+      }
     };
 
     reader.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้'));
     reader.readAsDataURL(file);
+  });
+}
+
+function preprocessBase64Image(sourceBase64) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_IMAGE_WIDTH) {
+        height = Math.round(height * (MAX_IMAGE_WIDTH / width));
+        width = MAX_IMAGE_WIDTH;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const contrast = Math.min(255, Math.max(0, (gray - 128) * 1.18 + 128));
+        data[i] = contrast;
+        data[i + 1] = contrast;
+        data[i + 2] = contrast;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+    };
+
+    img.onerror = () => reject(new Error('ไฟล์ภาพไม่ถูกต้อง'));
+    img.src = sourceBase64;
   });
 }
 
