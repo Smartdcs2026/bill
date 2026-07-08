@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Receipt OCR CJ</title>
+  <title>Receipt OCR</title>
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
@@ -18,7 +18,7 @@
 <body>
   <div id="loginPage" class="page active">
     <div class="login-card">
-      <div class="brand-mark">CJ</div>
+      <div class="brand-mark">OCR</div>
       <h1>Receipt OCR</h1>
       <p>ระบบอ่านข้อมูลบิลและบันทึกลง Google Sheet</p>
 
@@ -32,7 +32,7 @@
   <div id="appPage" class="page">
     <header class="topbar">
       <div>
-        <h1>บันทึกข้อมูล CJ</h1>
+        <h1>บันทึกข้อมูลใบเสร็จ</h1>
         <p id="userBadge">ผู้ใช้งาน: -</p>
       </div>
       <button id="logoutBtn" class="small-btn" type="button">ออก</button>
@@ -42,14 +42,14 @@
       <section class="panel">
         <div class="section-title">
           <h2>รอบการทำงาน</h2>
-          <p>เลือกเดือนและครั้งที่เก็บข้อมูล</p>
+          <p>เลือกแบรนด์ เดือน และครั้งที่เก็บข้อมูล</p>
         </div>
 
         <div class="grid-2">
           <div>
             <label class="field-label">แบรนด์</label>
             <select id="brandSelect" class="input">
-              <option value="CJ">CJ</option>
+              <option value="">กำลังโหลดแบรนด์...</option>
             </select>
           </div>
 
@@ -79,12 +79,32 @@
         <div class="section-title row-between">
           <div>
             <h2>ภาพบิล</h2>
-            <p>เพิ่มได้หลายภาพในรอบเดียว</p>
+            <p>ถ่ายภาพใหม่หรือเลือกรูปที่มีอยู่ เพิ่มได้หลายภาพในรอบเดียว</p>
           </div>
-          <button id="addImageBtn" class="small-btn primary" type="button">+ เพิ่มภาพ</button>
         </div>
 
-        <input id="imageInput" type="file" accept="image/*" capture="environment" hidden />
+        <div class="camera-guide">
+          <div class="guide-frame">
+            <div class="grid-line v1"></div>
+            <div class="grid-line v2"></div>
+            <div class="grid-line h1"></div>
+            <div class="grid-line h2"></div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="guide-text">วางบิลให้อยู่ในกรอบ อ่านได้ทั้งแนวตั้งและแนวนอน</div>
+          </div>
+        </div>
+
+        <div class="capture-actions">
+          <button id="takePhotoBtn" class="btn btn-primary" type="button">ถ่ายภาพบิล</button>
+          <button id="pickImageBtn" class="btn btn-light" type="button">เลือกรูปภาพ</button>
+        </div>
+
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+        <input id="galleryInput" type="file" accept="image/*" hidden />
+
         <div id="imageList" class="image-list"></div>
 
         <div class="action-row">
@@ -132,7 +152,7 @@
       <section class="panel">
         <div class="section-title">
           <h2>Rule เงื่อนไข CJ</h2>
-          <p>Admin ปรับได้เท่านั้น</p>
+          <p>Admin ปรับได้เท่านั้น แบรนด์อื่นเพิ่ม Rule ได้ภายหลัง</p>
         </div>
 
         <div class="grid-2">
@@ -170,7 +190,7 @@
           <h2>กลับหน้าใช้งาน</h2>
           <p>ใช้สำหรับทดสอบด้วยบัญชี Admin</p>
         </div>
-        <button id="goUserPageBtn" class="btn btn-primary" type="button">เปิดหน้าบันทึก CJ</button>
+        <button id="goUserPageBtn" class="btn btn-primary" type="button">เปิดหน้าบันทึกข้อมูล</button>
       </section>
     </main>
   </div>
