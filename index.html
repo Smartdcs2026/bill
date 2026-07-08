@@ -4,12 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Receipt OCR</title>
+  <title>Receipt OCR CJ</title>
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-
   <link rel="stylesheet" href="style.css" />
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -17,158 +16,165 @@
 </head>
 
 <body>
-  <div class="app-shell">
+  <div id="loginPage" class="page active">
+    <div class="login-card">
+      <div class="brand-mark">CJ</div>
+      <h1>Receipt OCR</h1>
+      <p>ระบบอ่านข้อมูลบิลและบันทึกลง Google Sheet</p>
 
-    <header class="app-header">
-      <div class="app-logo">
-        <span>OCR</span>
-      </div>
+      <label class="field-label">รหัสผ่าน</label>
+      <input id="loginPass" class="input pass-input" type="password" inputmode="numeric" placeholder="กรอกรหัส Pass" />
 
+      <button id="loginBtn" class="btn btn-primary" type="button">เข้าสู่ระบบ</button>
+    </div>
+  </div>
+
+  <div id="appPage" class="page">
+    <header class="topbar">
       <div>
-        <h1>Receipt OCR</h1>
-        <p>อ่านข้อมูลใบเสร็จและบันทึกลง Google Sheet</p>
+        <h1>บันทึกข้อมูล CJ</h1>
+        <p id="userBadge">ผู้ใช้งาน: -</p>
       </div>
+      <button id="logoutBtn" class="small-btn" type="button">ออก</button>
     </header>
 
-    <main class="main-card">
-
-      <section class="form-section">
-        <label class="field-label">ชื่อผู้บันทึก</label>
-        <input
-          id="recorderName"
-          class="input"
-          type="text"
-          placeholder="กรอกชื่อผู้บันทึก"
-          autocomplete="name"
-        />
-      </section>
-
-      <section class="form-section">
-        <label class="field-label">เลือกแบรนด์</label>
-        <select id="brandSelect" class="input">
-          <option value="">กำลังโหลดแบรนด์...</option>
-        </select>
-      </section>
-
-      <section class="capture-box">
-        <div class="capture-title">
-          <strong>ภาพใบเสร็จ</strong>
-          <span>ถ่ายภาพหรือเลือกรูป</span>
+    <main class="container">
+      <section class="panel">
+        <div class="section-title">
+          <h2>รอบการทำงาน</h2>
+          <p>เลือกเดือนและครั้งที่เก็บข้อมูล</p>
         </div>
 
-        <input
-          id="imageInput"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          hidden
-        />
+        <div class="grid-2">
+          <div>
+            <label class="field-label">แบรนด์</label>
+            <select id="brandSelect" class="input">
+              <option value="CJ">CJ</option>
+            </select>
+          </div>
 
-        <button id="chooseImageBtn" class="btn btn-primary" type="button">
-          ถ่ายภาพ / เลือกรูป
-        </button>
+          <div>
+            <label class="field-label">เดือนข้อมูล</label>
+            <input id="targetMonth" class="input" type="month" />
+          </div>
 
-        <div id="previewWrap" class="preview-wrap hidden">
-          <img id="previewImage" alt="Receipt Preview" />
+          <div>
+            <label class="field-label">ครั้งที่เก็บข้อมูล</label>
+            <select id="collectionRound" class="input">
+              <option value="1">ครั้งที่ 1</option>
+              <option value="2">ครั้งที่ 2</option>
+              <option value="3">ครั้งที่ 3</option>
+              <option value="4">ครั้งที่ 4</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="field-label">เวลาในระบบ</label>
+            <input id="clientTimeText" class="input" type="text" readonly />
+          </div>
         </div>
       </section>
 
-      <section class="action-grid">
-        <button id="ocrBtn" class="btn btn-dark" type="button">
-          อ่านข้อมูล OCR
-        </button>
-
-        <button id="clearBtn" class="btn btn-light" type="button">
-          ล้างข้อมูล
-        </button>
-      </section>
-
-      <section id="resultSection" class="result-section hidden">
-
-        <div class="section-head">
-          <h2>ข้อมูลที่อ่านได้</h2>
-          <p>ตรวจสอบและแก้ไขก่อนบันทึก</p>
+      <section class="panel">
+        <div class="section-title row-between">
+          <div>
+            <h2>ภาพบิล</h2>
+            <p>เพิ่มได้หลายภาพในรอบเดียว</p>
+          </div>
+          <button id="addImageBtn" class="small-btn primary" type="button">+ เพิ่มภาพ</button>
         </div>
 
-        <div class="result-grid">
-          <div>
-            <label class="field-label">เลขที่ใบเสร็จ</label>
-            <input id="receiptNo" class="input" type="text" />
-          </div>
+        <input id="imageInput" type="file" accept="image/*" capture="environment" hidden />
+        <div id="imageList" class="image-list"></div>
 
-          <div>
-            <label class="field-label">วันที่</label>
-            <input id="receiptDate" class="input" type="text" placeholder="dd/MM/yyyy" />
-          </div>
+        <div class="action-row">
+          <button id="ocrBtn" class="btn btn-dark" type="button">อ่านข้อมูล OCR</button>
+          <button id="clearBtn" class="btn btn-light" type="button">ล้างรอบนี้</button>
+        </div>
+      </section>
 
-          <div>
-            <label class="field-label">เวลา</label>
-            <input id="receiptTime" class="input" type="text" placeholder="HH:mm:ss" />
-          </div>
-
-          <div>
-            <label class="field-label">POS No</label>
-            <input id="posNo" class="input" type="text" />
-          </div>
-
-          <div>
-            <label class="field-label">Cashier</label>
-            <input id="cashier" class="input" type="text" />
-          </div>
-
-          <div>
-            <label class="field-label">Subtotal</label>
-            <input id="subtotal" class="input" type="number" step="0.01" />
-          </div>
-
-          <div>
-            <label class="field-label">VAT</label>
-            <input id="vat" class="input" type="number" step="0.01" />
-          </div>
-
-          <div>
-            <label class="field-label">Total</label>
-            <input id="total" class="input" type="number" step="0.01" />
-          </div>
-
-          <div class="full">
-            <label class="field-label">Payment Type</label>
-            <input id="paymentType" class="input" type="text" />
-          </div>
-
-          <div class="full">
-            <label class="field-label">หมายเหตุ</label>
-            <textarea id="userNote" class="textarea" placeholder="หมายเหตุเพิ่มเติม"></textarea>
-          </div>
+      <section id="resultPanel" class="panel hidden">
+        <div class="section-title">
+          <h2>ผลการอ่านข้อมูล</h2>
+          <p>ตรวจสอบก่อนบันทึก</p>
         </div>
 
-        <details class="raw-box">
-          <summary>ดูข้อความ OCR ทั้งหมด</summary>
-          <textarea id="rawText" class="textarea raw-text"></textarea>
-        </details>
+        <div id="summaryCards" class="summary-cards"></div>
+        <div id="resultRows" class="result-rows"></div>
 
-        <button id="saveBtn" class="btn btn-save" type="button">
-          บันทึกลง Google Sheet
-        </button>
-
+        <button id="saveBtn" class="btn btn-save" type="button">บันทึกรายการที่ผ่านเงื่อนไข</button>
       </section>
-   <a class="btn btn-light" href="admin.html" style="display:block;text-align:center;text-decoration:none;margin-top:12px;">
-  จัดการแบรนด์ / Template
-</a>
+
+      <section class="panel">
+        <div class="section-title row-between">
+          <div>
+            <h2>ข้อมูลที่บันทึกแล้ว</h2>
+            <p>ดูรายการย้อนหลัง</p>
+          </div>
+          <button id="loadHistoryBtn" class="small-btn primary" type="button">โหลดข้อมูล</button>
+        </div>
+
+        <div id="historyList" class="history-list"></div>
+      </section>
     </main>
+  </div>
 
-    <footer class="footer">
-      Receipt OCR System
-    </footer>
+  <div id="adminPage" class="page">
+    <header class="topbar">
+      <div>
+        <h1>หลังบ้าน Admin</h1>
+        <p id="adminBadge">ผู้ดูแลระบบ</p>
+      </div>
+      <button id="adminLogoutBtn" class="small-btn" type="button">ออก</button>
+    </header>
 
+    <main class="container">
+      <section class="panel">
+        <div class="section-title">
+          <h2>Rule เงื่อนไข CJ</h2>
+          <p>Admin ปรับได้เท่านั้น</p>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <label class="field-label">จำนวนครั้งต่อเดือน</label>
+            <input id="ruleMonthlyCount" class="input" type="number" value="4" min="1" />
+          </div>
+
+          <div>
+            <label class="field-label">ชื่อ Rule</label>
+            <input id="ruleName" class="input" type="text" value="CJ_DEFAULT_RULE" />
+          </div>
+        </div>
+
+        <div class="check-list">
+          <label><input id="ruleRequireMonth" type="checkbox" checked /> เดือนในบิลต้องตรงกับเดือนที่เลือก</label>
+          <label><input id="ruleSingleStore" type="checkbox" checked /> รอบเดียวกันต้องเป็นรหัสร้านเดียวกัน</label>
+          <label><input id="ruleDuplicatePos" type="checkbox" checked /> POS ซ้ำในรอบเดียวกันห้ามบันทึก</label>
+          <label><input id="ruleCustomerLess" type="checkbox" checked /> ยอดลูกค้าห้ามน้อยกว่ารอบก่อนหน้า</label>
+        </div>
+
+        <label class="field-label">Date Line Pattern</label>
+        <input id="dateLinePattern" class="input mono" type="text"
+          value="^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}[:.]\d{2})" />
+
+        <label class="field-label">BNO Pattern</label>
+        <input id="bnoPattern" class="input mono" type="text"
+          value="BNO[:\s]*([0-9]{6})([0-9]{2})([A-Z0-9]{3})-([0-9]{6})" />
+
+        <button id="saveRuleBtn" class="btn btn-save" type="button">บันทึก Rule CJ</button>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>กลับหน้าใช้งาน</h2>
+          <p>ใช้สำหรับทดสอบด้วยบัญชี Admin</p>
+        </div>
+        <button id="goUserPageBtn" class="btn btn-primary" type="button">เปิดหน้าบันทึก CJ</button>
+      </section>
+    </main>
   </div>
 
   <script src="app.js"></script>
-
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    }
-  </script>
 </body>
 </html>
