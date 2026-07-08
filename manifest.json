@@ -1,13 +1,13 @@
 {
-  "name": "Receipt OCR System",
+  "name": "Receipt OCR CJ",
   "short_name": "Receipt OCR",
-  "description": "อ่านข้อมูลใบเสร็จและบันทึกลง Google Sheet",
+  "description": "ระบบอ่านข้อมูลบิล",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#eef3f8",
-  "theme_color": "#2563eb",
+  "background_color": "#eef4fb",
+  "theme_color": "#1d4ed8",
   "icons": [
     {
       "src": "icons/icon-192.png",
