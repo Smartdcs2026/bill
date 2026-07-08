@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Receipt OCR</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <header class="app-header">
+      <div class="app-logo">
+        <span>OCR</span>
+      </div>
+
+      <div>
+        <h1>Receipt OCR</h1>
+        <p>อ่านข้อมูลใบเสร็จและบันทึกลง Google Sheet</p>
+      </div>
+    </header>
+
+    <main class="main-card">
+
+      <section class="form-section">
+        <label class="field-label">ชื่อผู้บันทึก</label>
+        <input
+          id="recorderName"
+          class="input"
+          type="text"
+          placeholder="กรอกชื่อผู้บันทึก"
+          autocomplete="name"
+        />
+      </section>
+
+      <section class="form-section">
+        <label class="field-label">เลือกแบรนด์</label>
+        <select id="brandSelect" class="input">
+          <option value="">กำลังโหลดแบรนด์...</option>
+        </select>
+      </section>
+
+      <section class="capture-box">
+        <div class="capture-title">
+          <strong>ภาพใบเสร็จ</strong>
+          <span>ถ่ายภาพหรือเลือกรูป</span>
+        </div>
+
+        <input
+          id="imageInput"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+        />
+
+        <button id="chooseImageBtn" class="btn btn-primary" type="button">
+          ถ่ายภาพ / เลือกรูป
+        </button>
+
+        <div id="previewWrap" class="preview-wrap hidden">
+          <img id="previewImage" alt="Receipt Preview" />
+        </div>
+      </section>
+
+      <section class="action-grid">
+        <button id="ocrBtn" class="btn btn-dark" type="button">
+          อ่านข้อมูล OCR
+        </button>
+
+        <button id="clearBtn" class="btn btn-light" type="button">
+          ล้างข้อมูล
+        </button>
+      </section>
+
+      <section id="resultSection" class="result-section hidden">
+
+        <div class="section-head">
+          <h2>ข้อมูลที่อ่านได้</h2>
+          <p>ตรวจสอบและแก้ไขก่อนบันทึก</p>
+        </div>
+
+        <div class="result-grid">
+          <div>
+            <label class="field-label">เลขที่ใบเสร็จ</label>
+            <input id="receiptNo" class="input" type="text" />
+          </div>
+
+          <div>
+            <label class="field-label">วันที่</label>
+            <input id="receiptDate" class="input" type="text" placeholder="dd/MM/yyyy" />
+          </div>
+
+          <div>
+            <label class="field-label">เวลา</label>
+            <input id="receiptTime" class="input" type="text" placeholder="HH:mm:ss" />
+          </div>
+
+          <div>
+            <label class="field-label">POS No</label>
+            <input id="posNo" class="input" type="text" />
+          </div>
+
+          <div>
+            <label class="field-label">Cashier</label>
+            <input id="cashier" class="input" type="text" />
+          </div>
+
+          <div>
+            <label class="field-label">Subtotal</label>
+            <input id="subtotal" class="input" type="number" step="0.01" />
+          </div>
+
+          <div>
+            <label class="field-label">VAT</label>
+            <input id="vat" class="input" type="number" step="0.01" />
+          </div>
+
+          <div>
+            <label class="field-label">Total</label>
+            <input id="total" class="input" type="number" step="0.01" />
+          </div>
+
+          <div class="full">
+            <label class="field-label">Payment Type</label>
+            <input id="paymentType" class="input" type="text" />
+          </div>
+
+          <div class="full">
+            <label class="field-label">หมายเหตุ</label>
+            <textarea id="userNote" class="textarea" placeholder="หมายเหตุเพิ่มเติม"></textarea>
+          </div>
+        </div>
+
+        <details class="raw-box">
+          <summary>ดูข้อความ OCR ทั้งหมด</summary>
+          <textarea id="rawText" class="textarea raw-text"></textarea>
+        </details>
+
+        <button id="saveBtn" class="btn btn-save" type="button">
+          บันทึกลง Google Sheet
+        </button>
+
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      Receipt OCR System
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
