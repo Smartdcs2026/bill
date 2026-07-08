@@ -1,118 +1,433 @@
 /************************************************************
  * app.js
- * Receipt OCR System Frontend
+ * Receipt OCR System Frontend - CJ Round 3
  ************************************************************/
 
 const API_BASE = 'https://bill.somchaibutphon.workers.dev';
 
-const MAX_IMAGE_WIDTH = 1280;
-const JPEG_QUALITY = 0.82;
+const MAX_IMAGE_WIDTH = 1400;
+const JPEG_QUALITY = 0.86;
 
-let appState = {
-  brands: [],
-  templates: [],
-  selectedFile: null,
-  imageBase64: '',
-  imageMimeType: 'image/jpeg',
-  rawText: '',
-  parsed: {}
-};
+let currentUser = null;
+let imageItems = [];
+let lastValidation = null;
 
-document.addEventListener('DOMContentLoaded', initApp);
-
-async function initApp() {
+document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
-  await loadOptions();
-}
+  setDefaultMonth();
+  setInterval(updateClientTime, 1000);
+  updateClientTime();
+});
 
 function bindEvents() {
-  document.getElementById('chooseImageBtn').addEventListener('click', () => {
-    document.getElementById('imageInput').click();
+  byId('loginBtn').addEventListener('click', login);
+  byId('loginPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
   });
 
-  document.getElementById('imageInput').addEventListener('change', handleImageChange);
-  document.getElementById('ocrBtn').addEventListener('click', runOCR);
-  document.getElementById('clearBtn').addEventListener('click', clearForm);
-  document.getElementById('saveBtn').addEventListener('click', saveRecord);
+  byId('logoutBtn').addEventListener('click', logout);
+  byId('adminLogoutBtn').addEventListener('click', logout);
+  byId('goUserPageBtn').addEventListener('click', () => showPage('appPage'));
+
+  byId('addImageBtn').addEventListener('click', () => byId('imageInput').click());
+  byId('imageInput').addEventListener('change', addImage);
+  byId('ocrBtn').addEventListener('click', runOCRAndValidate);
+  byId('clearBtn').addEventListener('click', clearBatch);
+  byId('saveBtn').addEventListener('click', confirmAndSave);
+  byId('loadHistoryBtn').addEventListener('click', loadHistory);
+  byId('saveRuleBtn').addEventListener('click', saveCJRule);
 }
 
-async function loadOptions() {
+async function login() {
+  const pass = byId('loginPass').value.trim();
+
+  if (!pass) {
+    return Swal.fire({ icon: 'warning', title: 'กรุณากรอกรหัสผ่าน' });
+  }
+
+  Swal.fire({
+    title: 'กำลังเข้าสู่ระบบ',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
   try {
-    const res = await fetch(`${API_BASE}/api/options`);
-    const data = await res.json();
+    const data = await postJson('/api/login', { pass });
 
-    if (!data.ok) throw new Error(data.message || 'โหลดข้อมูลไม่สำเร็จ');
+    if (!data.ok) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
 
-    appState.brands = data.brands || [];
-    appState.templates = data.templates || [];
+    currentUser = {
+      name: data.name,
+      role: data.role,
+      isAdmin: data.isAdmin,
+      pass: data.pass
+    };
 
-    renderBrandOptions();
+    Swal.close();
+
+    if (currentUser.isAdmin) {
+      byId('adminBadge').textContent = `ผู้ดูแลระบบ: ${currentUser.name}`;
+      showPage('adminPage');
+    } else {
+      byId('userBadge').textContent = `ผู้ใช้งาน: ${currentUser.name}`;
+      showPage('appPage');
+    }
 
   } catch (err) {
-    Swal.fire({
-      icon: 'error',
-      title: 'โหลดแบรนด์ไม่ได้',
-      text: err.message
-    });
-
-    renderFallbackBrands();
+    Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: err.message });
   }
 }
 
-function renderBrandOptions() {
-  const select = document.getElementById('brandSelect');
-
-  select.innerHTML = '<option value="">เลือกแบรนด์</option>';
-
-  appState.brands.forEach(brand => {
-    const opt = document.createElement('option');
-    opt.value = brand.brandCode;
-    opt.textContent = `${brand.brandCode} - ${brand.brandName}`;
-    select.appendChild(opt);
-  });
+function logout() {
+  currentUser = null;
+  clearBatch();
+  byId('loginPass').value = '';
+  showPage('loginPage');
 }
 
-function renderFallbackBrands() {
-  const fallback = ['CJ', 'MB', 'JF', 'TD', 'LE'];
-  const select = document.getElementById('brandSelect');
-
-  select.innerHTML = '<option value="">เลือกแบรนด์</option>';
-
-  fallback.forEach(code => {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = code;
-    select.appendChild(opt);
-  });
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  byId(id).classList.add('active');
 }
 
-async function handleImageChange(e) {
+async function addImage(e) {
   const file = e.target.files[0];
   if (!file) return;
 
-  appState.selectedFile = file;
-
   try {
-    const resizedBase64 = await resizeImageToBase64(file);
+    const base64 = await preprocessImage(file);
+    const item = {
+      index: imageItems.length + 1,
+      sourceImageIndex: imageItems.length + 1,
+      imageTempId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      imageName: file.name || `receipt_${imageItems.length + 1}.jpg`,
+      mimeType: 'image/jpeg',
+      base64,
+      rawText: ''
+    };
 
-    appState.imageBase64 = resizedBase64;
-    appState.imageMimeType = 'image/jpeg';
-
-    const img = document.getElementById('previewImage');
-    img.src = resizedBase64;
-
-    document.getElementById('previewWrap').classList.remove('hidden');
+    imageItems.push(item);
+    renderImageList();
+    byId('imageInput').value = '';
 
   } catch (err) {
-    Swal.fire({
-      icon: 'error',
-      title: 'อ่านรูปไม่ได้',
-      text: err.message
-    });
+    Swal.fire({ icon: 'error', title: 'เพิ่มภาพไม่สำเร็จ', text: err.message });
   }
 }
 
-function resizeImageToBase64(file) {
+function renderImageList() {
+  const box = byId('imageList');
+
+  if (!imageItems.length) {
+    box.innerHTML = `<div class="data-row">ยังไม่มีภาพในรอบนี้</div>`;
+    return;
+  }
+
+  box.innerHTML = imageItems.map((img, i) => `
+    <div class="image-card">
+      <img src="${img.base64}" alt="receipt">
+      <div class="image-meta">
+        <b>ภาพที่ ${i + 1}</b>
+        <span>${escapeHtml(img.imageName)}</span>
+        <span>${img.rawText ? 'อ่าน OCR แล้ว' : 'ยังไม่ได้อ่าน OCR'}</span>
+      </div>
+      <button class="remove-img" type="button" onclick="removeImage(${i})">ลบ</button>
+    </div>
+  `).join('');
+}
+
+function removeImage(index) {
+  imageItems.splice(index, 1);
+  imageItems = imageItems.map((img, i) => ({
+    ...img,
+    index: i + 1,
+    sourceImageIndex: i + 1
+  }));
+  renderImageList();
+}
+
+async function runOCRAndValidate() {
+  if (!currentUser) return Swal.fire({ icon: 'warning', title: 'กรุณาเข้าสู่ระบบ' });
+
+  const targetMonth = byId('targetMonth').value;
+  const collectionRound = byId('collectionRound').value;
+
+  if (!targetMonth) return Swal.fire({ icon: 'warning', title: 'กรุณาเลือกเดือนข้อมูล' });
+  if (!imageItems.length) return Swal.fire({ icon: 'warning', title: 'กรุณาเพิ่มภาพบิล' });
+
+  Swal.fire({
+    title: 'กำลังอ่าน OCR',
+    html: 'เตรียมอ่านภาพ...',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    for (let i = 0; i < imageItems.length; i++) {
+      Swal.update({ html: `กำลังอ่านข้อความภาพที่ ${i + 1} / ${imageItems.length}` });
+
+      if (!imageItems[i].rawText) {
+        const result = await Tesseract.recognize(imageItems[i].base64, 'eng', {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              const percent = Math.round((m.progress || 0) * 100);
+              Swal.update({ html: `ภาพที่ ${i + 1}: OCR ${percent}%` });
+            }
+          }
+        });
+
+        imageItems[i].rawText = normalizeText(result.data.text || '');
+      }
+    }
+
+    Swal.update({ html: 'กำลังตรวจเงื่อนไข CJ...' });
+
+    const validation = await postJson('/api/cj/validate', {
+      actor: currentUser,
+      targetMonth,
+      collectionRound,
+      images: imageItems
+    });
+
+    if (!validation.ok) throw new Error(validation.message || 'ตรวจสอบไม่สำเร็จ');
+
+    lastValidation = validation;
+
+    renderValidation(validation);
+    await showValidationSwal(validation);
+
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'OCR / ตรวจสอบไม่สำเร็จ', text: err.message });
+  }
+}
+
+function renderValidation(data) {
+  byId('resultPanel').classList.remove('hidden');
+
+  const s = data.summary || {};
+
+  byId('summaryCards').innerHTML = `
+    <div class="summary-card"><b>${s.totalRows || 0}</b><span>พบทั้งหมด</span></div>
+    <div class="summary-card"><b>${s.validCount || 0}</b><span>ผ่าน</span></div>
+    <div class="summary-card"><b>${s.invalidCount || 0}</b><span>ไม่ผ่าน</span></div>
+    <div class="summary-card"><b>${s.posCount || 0}</b><span>POS ผ่าน</span></div>
+  `;
+
+  byId('resultRows').innerHTML = (data.rows || []).map(row => renderDataRow(row)).join('');
+}
+
+function renderDataRow(row) {
+  const pass = row.status === 'PASS';
+
+  return `
+    <div class="data-row ${pass ? 'pass' : 'fail'}">
+      <div class="row-main">
+        <div><b>วันที่:</b> ${escapeHtml(row.receiptDate || '-')} ${escapeHtml(row.receiptTime || '')}</div>
+        <div><b>ร้าน:</b> ${escapeHtml(row.storeCode || '-')}</div>
+        <div><b>POS:</b> ${escapeHtml(row.posNo || '-')}</div>
+        <div><b>ลูกค้า:</b> ${escapeHtml(row.customerNo || '-')}</div>
+        <div><b>BNO:</b> ${escapeHtml(row.bno || '-')}</div>
+        <div class="${pass ? 'status-pass' : 'status-fail'}">${pass ? 'ผ่าน' : 'ไม่ผ่าน'}</div>
+      </div>
+      ${row.rejectReason ? `<div class="reason">${escapeHtml(row.rejectReason)}</div>` : ''}
+    </div>
+  `;
+}
+
+async function showValidationSwal(data) {
+  const valid = data.validRows || [];
+  const invalid = data.invalidRows || [];
+
+  const tableRows = (data.rows || []).map(row => `
+    <tr>
+      <td>${escapeHtml(row.storeCode || '-')}</td>
+      <td>${escapeHtml(row.posNo || '-')}</td>
+      <td>${escapeHtml(row.customerNo || '-')}</td>
+      <td class="${row.status === 'PASS' ? 'ok' : 'bad'}">${row.status === 'PASS' ? 'ผ่าน' : 'ไม่ผ่าน'}</td>
+    </tr>
+  `).join('');
+
+  return Swal.fire({
+    title: 'ตรวจสอบก่อนบันทึก',
+    html: `
+      <div style="text-align:left">
+        <div><b>เดือน:</b> ${escapeHtml(data.targetMonth || '-')}</div>
+        <div><b>ครั้งที่:</b> ${escapeHtml(String(data.collectionRound || '-'))}</div>
+        <div><b>ผู้บันทึก:</b> ${escapeHtml(currentUser.name)}</div>
+        <div style="margin:8px 0"><b>ผ่าน:</b> ${valid.length} รายการ | <b>ไม่ผ่าน:</b> ${invalid.length} รายการ</div>
+        <table class="swal-table">
+          <thead><tr><th>ร้าน</th><th>POS</th><th>ลูกค้า</th><th>สถานะ</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    `,
+    width: 720,
+    showCancelButton: true,
+    confirmButtonText: valid.length ? 'บันทึกรายการที่ผ่าน' : 'ปิด',
+    cancelButtonText: 'ตรวจดูอีกครั้ง'
+  }).then(res => {
+    if (res.isConfirmed && valid.length) confirmAndSave();
+  });
+}
+
+async function confirmAndSave() {
+  if (!lastValidation || !(lastValidation.validRows || []).length) {
+    return Swal.fire({ icon: 'warning', title: 'ไม่มีรายการที่ผ่านเงื่อนไข' });
+  }
+
+  const ask = await Swal.fire({
+    icon: 'question',
+    title: 'ยืนยันบันทึก?',
+    text: `จะบันทึก ${lastValidation.validRows.length} รายการที่ผ่านเงื่อนไข`,
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+
+  if (!ask.isConfirmed) return;
+
+  Swal.fire({
+    title: 'กำลังบันทึก',
+    html: 'กำลังบันทึกข้อมูลและรูปภาพ...',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    const data = await postJson('/api/cj/save', {
+      actor: currentUser,
+      targetMonth: byId('targetMonth').value,
+      collectionRound: byId('collectionRound').value,
+      images: imageItems,
+      validationData: lastValidation
+    });
+
+    if (!data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+
+    Swal.fire({
+      icon: 'success',
+      title: 'บันทึกสำเร็จ',
+      html: `<div style="text-align:left">
+        <div><b>จำนวน:</b> ${data.savedCount || 0} รายการ</div>
+        <div><b>Image Group:</b> ${escapeHtml(data.imageGroupId || '-')}</div>
+      </div>`
+    });
+
+    clearBatch();
+    loadHistory();
+
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: err.message });
+  }
+}
+
+async function loadHistory() {
+  const targetMonth = byId('targetMonth').value;
+
+  Swal.fire({
+    title: 'กำลังโหลดข้อมูล',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    const data = await postJson('/api/history', {
+      brandCode: 'CJ',
+      targetMonth
+    });
+
+    if (!data.ok) throw new Error(data.message || 'โหลดข้อมูลไม่สำเร็จ');
+
+    Swal.close();
+
+    byId('historyList').innerHTML = data.rows.length
+      ? data.rows.map(renderHistoryRow).join('')
+      : '<div class="data-row">ยังไม่มีข้อมูล</div>';
+
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'โหลดข้อมูลไม่สำเร็จ', text: err.message });
+  }
+}
+
+function renderHistoryRow(row) {
+  return `
+    <div class="data-row pass">
+      <div class="row-main">
+        <div><b>เวลา:</b> ${escapeHtml(row.timestamp || '-')}</div>
+        <div><b>ผู้บันทึก:</b> ${escapeHtml(row.recorderName || '-')}</div>
+        <div><b>ร้าน:</b> ${escapeHtml(row.storeCode || '-')}</div>
+        <div><b>POS:</b> ${escapeHtml(row.posNo || '-')}</div>
+        <div><b>ลูกค้า:</b> ${escapeHtml(row.customerNo || '-')}</div>
+        <div><b>ครั้งที่:</b> ${escapeHtml(row.collectionRound || '-')}</div>
+      </div>
+      ${row.imageUrl ? `<div style="margin-top:10px"><a class="small-btn primary" href="${row.imageUrl}" target="_blank" rel="noopener">ดูภาพบิล</a></div>` : ''}
+    </div>
+  `;
+}
+
+async function saveCJRule() {
+  if (!currentUser || !currentUser.isAdmin) {
+    return Swal.fire({ icon: 'error', title: 'ต้องเป็น Admin เท่านั้น' });
+  }
+
+  const rule = {
+    brandCode: 'CJ',
+    ruleName: byId('ruleName').value.trim() || 'CJ_DEFAULT_RULE',
+    enabled: true,
+    monthlyCollectionCount: Number(byId('ruleMonthlyCount').value || 4),
+    requireMonthMatch: byId('ruleRequireMonth').checked,
+    requireSingleStorePerBatch: byId('ruleSingleStore').checked,
+    rejectDuplicatePosInBatch: byId('ruleDuplicatePos').checked,
+    rejectCustomerLessThanPrevious: byId('ruleCustomerLess').checked,
+    dateLinePattern: byId('dateLinePattern').value.trim(),
+    bnoPattern: byId('bnoPattern').value.trim()
+  };
+
+  try {
+    const data = await postJson('/api/admin/rule/save', {
+      actor: currentUser,
+      rule
+    });
+
+    if (!data.ok) throw new Error(data.message || 'บันทึก Rule ไม่สำเร็จ');
+
+    Swal.fire({ icon: 'success', title: 'บันทึก Rule สำเร็จ' });
+
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'บันทึก Rule ไม่สำเร็จ', text: err.message });
+  }
+}
+
+function clearBatch() {
+  imageItems = [];
+  lastValidation = null;
+  byId('resultPanel').classList.add('hidden');
+  renderImageList();
+}
+
+function setDefaultMonth() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  byId('targetMonth').value = `${yyyy}-${mm}`;
+}
+
+function updateClientTime() {
+  const el = byId('clientTimeText');
+  if (el) el.value = formatDateTimeTH(new Date());
+}
+
+function formatDateTimeTH(date) {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
+}
+
+function preprocessImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -120,8 +435,6 @@ function resizeImageToBase64(file) {
       const img = new Image();
 
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-
         let width = img.width;
         let height = img.height;
 
@@ -130,102 +443,42 @@ function resizeImageToBase64(file) {
           width = MAX_IMAGE_WIDTH;
         }
 
+        const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
 
         const ctx = canvas.getContext('2d');
-
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-        resolve(base64);
+        // ปรับภาพให้ OCR อ่านตัวเลข/อังกฤษดีขึ้นแบบไม่ทำลายภาพมากเกินไป
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          const contrast = Math.min(255, Math.max(0, (gray - 128) * 1.18 + 128));
+          data[i] = contrast;
+          data[i + 1] = contrast;
+          data[i + 2] = contrast;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
       };
 
-      img.onerror = () => reject(new Error('ไฟล์รูปไม่ถูกต้อง'));
+      img.onerror = () => reject(new Error('ไฟล์ภาพไม่ถูกต้อง'));
       img.src = reader.result;
     };
 
-    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+    reader.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้'));
     reader.readAsDataURL(file);
   });
 }
 
-async function runOCR() {
-  const recorderName = document.getElementById('recorderName').value.trim();
-  const brandCode = document.getElementById('brandSelect').value;
-
-  if (!recorderName) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณากรอกชื่อผู้บันทึก'
-    });
-  }
-
-  if (!brandCode) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณาเลือกแบรนด์'
-    });
-  }
-
-  if (!appState.imageBase64) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณาถ่ายภาพหรือเลือกรูปใบเสร็จ'
-    });
-  }
-
-  Swal.fire({
-    title: 'กำลังอ่าน OCR',
-    html: 'ระบบกำลังอ่านข้อความจากใบเสร็จ...',
-    allowOutsideClick: false,
-    didOpen: () => Swal.showLoading()
-  });
-
-  try {
-    const result = await Tesseract.recognize(
-      appState.imageBase64,
-      'eng',
-      {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            const percent = Math.round((m.progress || 0) * 100);
-            Swal.update({
-              html: `กำลังอ่านข้อความ ${percent}%`
-            });
-          }
-        }
-      }
-    );
-
-    const rawText = normalizeOCRText(result.data.text || '');
-    appState.rawText = rawText;
-
-    const parsed = parseReceiptByBrand(rawText, brandCode);
-    appState.parsed = parsed;
-
-    fillResultFields(parsed, rawText);
-
-    document.getElementById('resultSection').classList.remove('hidden');
-
-    Swal.fire({
-      icon: 'success',
-      title: 'อ่านข้อมูลเสร็จแล้ว',
-      text: 'กรุณาตรวจสอบข้อมูลก่อนบันทึก'
-    });
-
-  } catch (err) {
-    Swal.fire({
-      icon: 'error',
-      title: 'OCR ไม่สำเร็จ',
-      text: err.message
-    });
-  }
-}
-
-function normalizeOCRText(text) {
+function normalizeText(text) {
   return String(text || '')
     .replace(/\r/g, '\n')
     .replace(/[|]/g, 'I')
@@ -235,332 +488,24 @@ function normalizeOCRText(text) {
     .trim();
 }
 
-function parseReceiptByBrand(rawText, brandCode) {
-  const brandTemplates = appState.templates
-    .filter(t => String(t.brandCode).toUpperCase() === String(brandCode).toUpperCase())
-    .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
-
-  if (!brandTemplates.length) {
-    return parseWithBasicRules(rawText);
-  }
-
-  let bestResult = {};
-  let bestScore = -1;
-
-  brandTemplates.forEach(template => {
-    const parsed = parseWithRules(rawText, template.rules || {});
-    const score = scoreParsedResult(parsed);
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestResult = parsed;
-    }
+async function postJson(path, payload) {
+  const res = await fetch(API_BASE + path, {
+    method: path === '/api/options' ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: path === '/api/options' ? undefined : JSON.stringify(payload || {})
   });
 
-  return bestResult;
+  return await res.json();
 }
 
-function parseWithBasicRules(rawText) {
-  return {
-    receiptNo: firstRegex(rawText, /(BNO|NO|Receipt|Ref|Bill|Doc)[\s:#-]*([A-Z0-9\-\/]+)/i, 2),
-    receiptDate: firstRegex(rawText, /(\d{2}[\/\-]\d{2}[\/\-]\d{4})/, 1),
-    receiptTime: firstRegex(rawText, /(\d{2}[:.]\d{2}(?::\d{2})?)/, 1),
-    posNo: firstRegex(rawText, /(POS|Terminal|Till)[\s:#-]*([A-Z0-9\-\/]+)/i, 2),
-    cashier: firstRegex(rawText, /(Cashier|Staff|Emp)[\s:#-]*([A-Z0-9\-\/]+)/i, 2),
-    subtotal: findNumberNearKeyword(rawText, ['SUBTOTAL', 'SUB TOTAL']),
-    vat: findNumberNearKeyword(rawText, ['VAT', 'TAX']),
-    total: findNumberNearKeyword(rawText, ['TOTAL', 'NET', 'AMOUNT', 'BALANCE']),
-    paymentType: findLineByKeyword(rawText, ['CASH', 'CARD', 'PROMPTPAY', 'QR'])
-  };
+function byId(id) {
+  return document.getElementById(id);
 }
 
-function parseWithRules(rawText, rules) {
-  const output = {};
-
-  Object.keys(rules).forEach(fieldName => {
-    const ruleList = Array.isArray(rules[fieldName])
-      ? rules[fieldName]
-      : [rules[fieldName]];
-
-    for (const rule of ruleList) {
-      const value = applyRule(rawText, rule);
-
-      if (value !== '') {
-        output[fieldName] = value;
-        break;
-      }
-    }
-
-    if (!output[fieldName]) output[fieldName] = '';
-  });
-
-  return output;
-}
-
-function applyRule(rawText, rule) {
-  if (!rule || !rule.type) return '';
-
-  if (rule.type === 'regex') {
-    return firstRegex(rawText, new RegExp(rule.pattern, 'i'), Number(rule.group || 1));
-  }
-
-  if (rule.type === 'keywordNumber') {
-    return findNumberNearKeyword(rawText, rule.keywords || []);
-  }
-
-  if (rule.type === 'keywordLine') {
-    return findLineByKeyword(rawText, rule.keywords || []);
-  }
-
-  if (rule.type === 'lineNumber') {
-    return getLineValue(rawText, Number(rule.lineIndex || 0));
-  }
-
-  if (rule.type === 'afterKeywordLine') {
-    return getLineAfterKeyword(rawText, rule.keywords || [], Number(rule.offset || 1));
-  }
-
-  return '';
-}
-
-function firstRegex(text, regex, groupIndex) {
-  const match = String(text || '').match(regex);
-  return match && match[groupIndex] ? cleanValue(match[groupIndex]) : '';
-}
-
-function findNumberNearKeyword(text, keywords) {
-  const lines = String(text || '').split('\n').map(x => x.trim()).filter(Boolean);
-
-  for (const keyword of keywords) {
-    const upperKeyword = String(keyword).toUpperCase();
-
-    for (const line of lines) {
-      const upperLine = line.toUpperCase();
-
-      if (upperLine.includes(upperKeyword)) {
-        const numbers = line.match(/\d+(?:[,.]\d{2})?/g);
-
-        if (numbers && numbers.length) {
-          return cleanMoney(numbers[numbers.length - 1]);
-        }
-      }
-    }
-  }
-
-  return '';
-}
-
-function findLineByKeyword(text, keywords) {
-  const lines = String(text || '').split('\n').map(x => x.trim()).filter(Boolean);
-
-  for (const keyword of keywords) {
-    const upperKeyword = String(keyword).toUpperCase();
-
-    for (const line of lines) {
-      if (line.toUpperCase().includes(upperKeyword)) {
-        return cleanValue(line);
-      }
-    }
-  }
-
-  return '';
-}
-
-function getLineValue(text, lineIndex) {
-  const lines = String(text || '').split('\n').map(x => x.trim()).filter(Boolean);
-  return lines[lineIndex] ? cleanValue(lines[lineIndex]) : '';
-}
-
-function getLineAfterKeyword(text, keywords, offset) {
-  const lines = String(text || '').split('\n').map(x => x.trim()).filter(Boolean);
-
-  for (const keyword of keywords) {
-    const upperKeyword = String(keyword).toUpperCase();
-
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].toUpperCase().includes(upperKeyword)) {
-        const targetIndex = i + offset;
-        return lines[targetIndex] ? cleanValue(lines[targetIndex]) : '';
-      }
-    }
-  }
-
-  return '';
-}
-
-function scoreParsedResult(parsed) {
-  let score = 0;
-
-  Object.keys(parsed || {}).forEach(key => {
-    if (parsed[key]) score += 1;
-  });
-
-  if (parsed.total) score += 2;
-  if (parsed.receiptNo) score += 2;
-  if (parsed.receiptDate) score += 2;
-
-  return score;
-}
-
-function fillResultFields(parsed, rawText) {
-  setValue('receiptNo', parsed.receiptNo);
-  setValue('receiptDate', parsed.receiptDate);
-  setValue('receiptTime', normalizeTime(parsed.receiptTime));
-  setValue('posNo', parsed.posNo);
-  setValue('cashier', parsed.cashier);
-  setValue('subtotal', parsed.subtotal);
-  setValue('vat', parsed.vat);
-  setValue('total', parsed.total);
-  setValue('paymentType', parsed.paymentType);
-  setValue('rawText', rawText);
-}
-
-function setValue(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.value = value || '';
-}
-
-function getValue(id) {
-  const el = document.getElementById(id);
-  return el ? el.value.trim() : '';
-}
-
-function normalizeTime(value) {
-  if (!value) return '';
-  return String(value).replace('.', ':');
-}
-
-function cleanValue(value) {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function cleanMoney(value) {
-  return String(value || '')
-    .replace(',', '.')
-    .replace(/[^\d.]/g, '')
-    .trim();
-}
-
-async function saveRecord() {
-  const recorderName = getValue('recorderName');
-  const brandCode = getValue('brandSelect');
-
-  if (!recorderName) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณากรอกชื่อผู้บันทึก'
-    });
-  }
-
-  if (!brandCode) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณาเลือกแบรนด์'
-    });
-  }
-
-  if (!appState.imageBase64) {
-    return Swal.fire({
-      icon: 'warning',
-      title: 'กรุณาแนบภาพใบเสร็จ'
-    });
-  }
-
-  const brand = appState.brands.find(b => b.brandCode === brandCode);
-
-  const payload = {
-    data: {
-      recorderName,
-      brandCode,
-      brandName: brand?.brandName || brandCode,
-      receiptNo: getValue('receiptNo'),
-      receiptDate: getValue('receiptDate'),
-      receiptTime: getValue('receiptTime'),
-      posNo: getValue('posNo'),
-      cashier: getValue('cashier'),
-      subtotal: getValue('subtotal'),
-      vat: getValue('vat'),
-      total: getValue('total'),
-      paymentType: getValue('paymentType'),
-      rawText: getValue('rawText'),
-      parsed: appState.parsed || {},
-      userNote: getValue('userNote'),
-      image: {
-        base64: appState.imageBase64,
-        mimeType: appState.imageMimeType,
-        fileName: appState.selectedFile?.name || 'receipt.jpg'
-      }
-    }
-  };
-
-  Swal.fire({
-    title: 'กำลังบันทึก',
-    html: 'กำลังส่งข้อมูลและบันทึกรูปภาพ...',
-    allowOutsideClick: false,
-    didOpen: () => Swal.showLoading()
-  });
-
-  try {
-    const res = await fetch(`${API_BASE}/api/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-
-    if (!data.ok) {
-      throw new Error(data.message || 'บันทึกไม่สำเร็จ');
-    }
-
-    Swal.fire({
-      icon: 'success',
-      title: 'บันทึกสำเร็จ',
-      html: `
-        <div style="text-align:left;font-size:14px">
-          <div><b>เวลา:</b> ${data.timestamp || '-'}</div>
-          <div><b>Image ID:</b> ${data.imageFileId || '-'}</div>
-        </div>
-      `
-    });
-
-    clearForm();
-
-  } catch (err) {
-    Swal.fire({
-      icon: 'error',
-      title: 'บันทึกไม่สำเร็จ',
-      text: err.message
-    });
-  }
-}
-
-function clearForm() {
-  appState.selectedFile = null;
-  appState.imageBase64 = '';
-  appState.rawText = '';
-  appState.parsed = {};
-
-  document.getElementById('imageInput').value = '';
-  document.getElementById('previewImage').src = '';
-  document.getElementById('previewWrap').classList.add('hidden');
-  document.getElementById('resultSection').classList.add('hidden');
-
-  [
-    'receiptNo',
-    'receiptDate',
-    'receiptTime',
-    'posNo',
-    'cashier',
-    'subtotal',
-    'vat',
-    'total',
-    'paymentType',
-    'userNote',
-    'rawText'
-  ].forEach(id => setValue(id, ''));
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
