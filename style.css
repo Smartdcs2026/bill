@@ -723,40 +723,29 @@ textarea:focus {
 }
 
 
-
 /************************************************************
- * Camera guide / Multi-brand capture UI
+ * ROUND 9 Camera in web
  ************************************************************/
-.camera-guide { margin-bottom: 12px; }
-.guide-frame {
-  position: relative;
+.camera-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 210px;
-  border-radius: 22px;
-  overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.88)),
-    radial-gradient(circle at center, rgba(37, 99, 235, 0.35), transparent 62%);
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+  height: 100%;
+  object-fit: cover;
 }
-.grid-line { position: absolute; background: rgba(255,255,255,.28); }
-.grid-line.v1,.grid-line.v2 { top:0; bottom:0; width:1px; }
-.grid-line.v1 { left:33.33%; }
-.grid-line.v2 { left:66.66%; }
-.grid-line.h1,.grid-line.h2 { left:0; right:0; height:1px; }
-.grid-line.h1 { top:33.33%; }
-.grid-line.h2 { top:66.66%; }
-.corner { position:absolute; width:34px; height:34px; border-color:rgba(255,255,255,.86); }
-.corner.tl { top:18px; left:18px; border-top:4px solid; border-left:4px solid; }
-.corner.tr { top:18px; right:18px; border-top:4px solid; border-right:4px solid; }
-.corner.bl { bottom:18px; left:18px; border-bottom:4px solid; border-left:4px solid; }
-.corner.br { bottom:18px; right:18px; border-bottom:4px solid; border-right:4px solid; }
-.guide-text {
-  position:absolute; left:14px; right:14px; bottom:14px;
-  padding:10px 12px; border-radius:14px;
-  background:rgba(15,23,42,.72); color:white; font-size:13px; text-align:center;
-  backdrop-filter:blur(8px);
+
+.capture-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
-.capture-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
-@media(max-width:520px){ .guide-frame{min-height:190px}.capture-actions{grid-template-columns:1fr} }
+
+.capture-actions .btn {
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .capture-actions {
+    grid-template-columns: 1fr;
+  }
+}
